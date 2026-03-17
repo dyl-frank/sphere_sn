@@ -1,0 +1,30 @@
+# Build directory
+build/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Compiled binaries
+sn_transport
+*.o
+*.a
+*.so
+
+# Output files
+*.csv
+*.txt
+!README.md
+
+# Editor/IDE
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

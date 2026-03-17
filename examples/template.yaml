@@ -1,0 +1,82 @@
+# ─────────────────────────────────────────
+#  1D Spherical Sn Transport — NUEN 625
+# ─────────────────────────────────────────
+
+geometry:
+  # Shells are listed innermost → outermost.
+  # inner_radius of shell 1 is always 0; each shell's inner_radius
+  # is inferred from the previous shell's outer_radius.
+  shells:
+    - id: 1
+      outer_radius: 0.4       # [cm]
+      num_cells: 900
+      material: fuel
+      source: src_uniform
+
+    - id: 2
+      outer_radius: 0.7       # [cm]
+      num_cells: 300
+      material: moderator
+      source: none            # no distributed source in this shell
+
+    - id: 3
+      outer_radius: 10.0       # rb [cm] — outermost shell defines the problem boundary
+      num_cells: 300
+      material: reflector
+      source: src_uniform
+
+angular_quadrature:
+  sn_order: 8                 # N (even only); Gauss quadrature, weights sum to 2
+
+materials:
+  - id: fuel
+    sigma_t: 30.0             # [1/cm]
+    sigma_a: 0.5
+    scattering_order: 1       # Pn order K; 0 = isotropic
+    sigma_s_moments:          # k = 1..K only; sigma_s0 = sigma_t - sigma_a
+      - 0.3                   # sigma_s1
+
+  - id: moderator
+    sigma_t: 3.0
+    sigma_a: 0.1
+    scattering_order: 0       # isotropic; no sigma_s_moments needed
+
+  - id: reflector
+    sigma_t: 5.0
+    sigma_a: 0.05
+    scattering_order: 1
+    sigma_s_moments:
+      - 0.2
+
+sources:
+  distributed:
+    - id: src_uniform
+      strength: 1.0           # q0 [p/cm³/s], constant within every cell of this shell
+      normalize: false        # true → normalize shell's volumetric integral to 1
+
+    # Per-cell override example (length must match shell's num_cells):
+    # - id: src_shaped
+    #   per_cell_strength: [1.0, 0.9, 0.8, ...]
+    #   normalize: false
+
+  boundary:
+    # Incident flux at the outer surface of the outermost shell
+    isotropic_flux: 0.0       # set > 0 to add an incoming boundary source
+    # per_direction: []       # explicit ψ_m for µm < 0, length = N/2
+    normalize: false          # true → normalize half-range current to 1
+
+  # When both distributed and boundary are active and any normalize flag is true,
+  # the code normalizes so that (total volume source) + (incident current) = 1.
+
+solver:
+  acceleration: none           # none | dsa
+  convergence_tolerance: 1.0e-12
+  max_iterations: 50000
+
+output:
+  directory: ./
+  scalar_flux_csv: true           # cell-centered φ_i across all shells
+  scalar_flux_pdv: true           # cell-centered φ_i across all shells
+  balance_table: true         # source rate, inflow, outflow, absorption, balance measure
+  angular_flux_boundary: true # all ψ_m at outer boundary
+  starting_direction_origin: true  # ψ_{1/2} at r = 0

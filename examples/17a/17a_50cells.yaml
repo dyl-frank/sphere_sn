@@ -1,0 +1,36 @@
+name: "50_cells_"
+geometry:
+  shells:
+    - id: 1
+      outer_radius: 1.0       # [cm]
+      num_cells: 50
+      material: m1
+      source: none
+
+angular_quadrature:
+  sn_order: 4              
+
+materials:
+  - id: m1
+    sigma_t: 1.0             # [1/cm]
+    sigma_a: 1.0
+    scattering_order: 0 
+
+sources:
+  boundary:
+    # Incident flux at the outer surface of the outermost shell
+    isotropic_flux: 1.0 
+    normalize: true     
+
+solver:
+  acceleration: none           # none | dsa
+  convergence_tolerance: 1.0e-12
+  max_iterations: 50000
+
+output:
+  directory: ./
+  scalar_flux_csv: true           # cell-centered \phi_i across all shells
+  scalar_flux_pdv: true           # cell-centered \phi_i across all shells
+  balance_table: false         # source rate, inflow, outflow, absorption, balance measure
+  angular_flux_boundary: false # all \psi_m at outer boundary
+  starting_direction_origin: false  # \psi_{1/2} at r = 0
