@@ -42,8 +42,9 @@ struct DistributedSourceInput
 
 struct BoundaryInput
 {
-    double               isotropic_flux = 0.0;
-    std::vector<double>  per_direction;      // explicit ψ_m for µm < 0, length = N/2
+    double               isotropic_flux   = 0.0;  // angular flux ψ, applied isotropically
+    double               scalar_flux      = 0.0;  // isotropic scalar flux φ; solver sets ψ = φ/2
+    std::vector<double>  per_direction;            // explicit ψ_m for µm < 0, length = N/2
     bool                 normalize = false;
 };
 

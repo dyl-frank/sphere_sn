@@ -31,6 +31,6 @@ output:
   directory: ./
   scalar_flux_csv: true           # cell-centered \phi_i across all shells
   scalar_flux_pdv: true           # cell-centered \phi_i across all shells
-  balance_table: false         # source rate, inflow, outflow, absorption, balance measure
+  balance_table: true         # source rate, inflow, outflow, absorption, balance measure
   angular_flux_boundary: false # all \psi_m at outer boundary
   starting_direction_origin: false  # \psi_{1/2} at r = 0

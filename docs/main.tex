@@ -1,0 +1,163 @@
+% ===========================================================================
+% ALGORITHM / ALGPSEUDOCODE CHEAT SHEET
+% ---------------------------------------------------------------------------
+% Basic statement:
+%   \State do something
+%
+% Assignment:
+%   \State $x \gets y + z$
+%
+% Comments (inline):
+%   \State $x \gets 0$ \Comment{this is a comment}
+%
+% If / ElsIf / Else:
+%   \If{$x > 0$}
+%     \State ...
+%   \ElsIf{$x = 0$}
+%     \State ...
+%   \Else
+%     \State ...
+%   \EndIf
+%
+% For loop:
+%   \For{$i = 1$ \textbf{to} $N$}
+%     \State ...
+%   \EndFor
+%
+% For-each loop:
+%   \ForAll{$x \in S$}
+%     \State ...
+%   \EndFor
+%
+% While loop:
+%   \While{$x > 0$}
+%     \State ...
+%   \EndWhile
+%
+% Repeat-Until:
+%   \Repeat
+%     \State ...
+%   \Until{condition}
+%
+% Function definition:
+%   \Function{MyFunc}{$a, b$}
+%     \State \Return $a + b$
+%   \EndFunction
+%   \State $z \gets \Call{MyFunc}{x, y}$
+%
+% Require / Ensure (preconditions / postconditions):
+%   \Require input is valid
+%   \Ensure output satisfies property
+%
+% Line numbers: enabled by \begin{algorithmic}[1]  (step size = 1)
+%
+% Cross-reference an algorithm:
+%   \label{alg:foo}  inside \begin{algorithm}
+%   refer with \cref{alg:foo}  (needs cleveref) or Algorithm~\ref{alg:foo}
+% ===========================================================================
+
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{cancel}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath, amsfonts, amssymb, esint, multicol}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\usepackage[framemethod=tikz]{mdframed}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\newcommand*\circled[1]{\tikz[baseline=(char.base)]{
+            \node[shape=circle,draw,inner sep=2pt] (char) {#1};}}
+% Define custom color and box environment
+\definecolor{mycolor}{rgb}{0.122, 0.435, 0.698}
+\newmdenv[
+    innerlinewidth=0.5pt,
+    roundcorner=4pt,
+    linecolor=mycolor,
+    innerleftmargin=10pt,
+    innerrightmargin=10pt,
+    innertopmargin=4pt,
+    innerbottommargin=3pt
+]{mybox}
+
+% MACROS
+\newcommand{\R}{{\mathbb R}}
+\newcommand{\V}{\vec}
+\newcommand{\resetcount}{{\setcounter{equation}{0}
+}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+
+\usepackage{parskip}
+\newcommand{\volume}{\makebox[1pt][l]{$-$}V}
+
+\usepackage{listings}
+\lstset{ 
+  breaklines=true,
+  breakatwhitespace=true
+}
+
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+% Title page formatting
+\title{\vspace{2in}\textbf{NUEN 625 Project}\\\vspace{0.5in}\large Neutron Transport Theory}
+\author{Dylan Frank\\Texas A\&M University}
+\date{Due: Friday, March 24, 2026}
+
+\begin{document}
+
+% Cover page
+\maketitle
+\thispagestyle{empty}
+\newpage
+
+% Start page numbering
+\setcounter{page}{1}
+\section*{Problem 9}
+
+Show that if one assumes that
+\begin{equation*}
+  \psi(-1) = (\phi-3J)/2
+\end{equation*}  
+
+and further that
+
+\begin{equation*}
+  \psi(\mu_m) = (\phi-3J\mu_m)/2,\quad m=1,\dots, N,
+\end{equation*}
+
+then the weighted-diamond difference approximation implies that
+
+\begin{equation*}
+  \psi(\mu_{m+1/2}) = (\phi-3J\mu_{m+1/2})/2,\quad m=0,\dots, N,
+\end{equation*}
+
+\begin{mybox}
+  The weighted-diamond difference closure is:
+  \begin{equation*}
+    \psi_m = \beta_m \psi_{m+1/2} + 
+  \end{equation*}
+\end{mybox}
+
+%The WD closure (Eq. 10) is:
+
+$$\psi_m = \beta_m \psi_{m+1/2} + (1-\beta_m)\psi_{m-1/2}$$
+
+% Solve this for ψ_{m+1/2}, substitute the linear ansatz for ψ_m and ψ_{m-1/2}, and simplify. The algebra reduces to a single step that uses the defining property of β_m (Eq. 11):
+
+% $$\mu_m = \beta_m \mu_{m+1/2} + (1-\beta_m)\mu_{m-1/2}$$
+
+% That relation is exactly what makes the algebra close. The β_m is chosen so that μ_m is the same weighted average of the cell-edge cosines as ψ_m is of the cell-edge fluxes — i.e., the WD closure is consistent with a linear angular dependence. That's the whole point: when ψ is linear in μ, the WD relation is exact, not approximate.
+
+
+\section*{Problem 2}
+Starting with the spatially-analytic Sn equations, assume that
+\begin{equation*}
+  \psi(\mu_j) = (\phi + 3J\mu_j )/2 , j = 1/2, 1, 3/2, ...., N, N + 1/2,
+\end{equation*}
+and show that taking the zero’th and ﬁrst angular moments of the S$_n$ equations using the quadrature formula yields the analytic P1 equations. 
+\end{document}

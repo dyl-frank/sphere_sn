@@ -179,7 +179,11 @@ private:
         auto& bnd = sources.addStruct("boundary",
                         "Outer-boundary incident angular flux");
         bnd.addDouble("isotropic_flux",
-                      "Isotropic incident flux").defaultValue(0.0);
+                      "Isotropic incident angular flux ψ (applied to all incoming directions)")
+                     .defaultValue(0.0);
+        bnd.addDouble("scalar_flux",
+                      "Isotropic incident scalar flux φ; solver converts to ψ = φ/2")
+                     .defaultValue(0.0);
         bnd.addDoubleArray("per_direction",
                            "Per-direction psi_m for mu_m < 0 (length = N/2)");
         bnd.addBool("normalize",
@@ -247,10 +251,12 @@ private:
                     .get<std::vector<DistributedSourceInput>>();
         }
 
-        //  sources/boundary 
+        //  sources/boundary
         // Scalar fields have defaultValue() so always safe to read.
         data.boundary.isotropic_flux =
             inlet.get<double>("sources/boundary/isotropic_flux");
+        data.boundary.scalar_flux =
+            inlet.get<double>("sources/boundary/scalar_flux");
         data.boundary.normalize =
             inlet.get<bool>("sources/boundary/normalize");
 

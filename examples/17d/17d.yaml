@@ -1,31 +1,33 @@
-name: "50_cells_"
+name: "17d_"
 geometry:
   shells:
     - id: 1
       outer_radius: 1.0       # [cm]
-      num_cells: 50
+      num_cells: 100
       material: m1
-      source: none
+      source: src_uniform
 
 angular_quadrature:
-  sn_order: 4              
+  sn_order: 8
 
 materials:
   - id: m1
-    sigma_t: 1.0             # [1/cm]
-    sigma_a: 1.0
-    scattering_order: 0 
+    sigma_t: 30.0             # [1/cm]  (sigma_s0 = sigma_t - sigma_a = 1)
+    sigma_a: 0.0
 
 sources:
   boundary:
     # Incident flux at the outer surface of the outermost shell
-    isotropic_flux: 1.0 
-    normalize: true     
+    isotropic_flux: 0.0
+  distributed:
+    - id: src_uniform
+      strength: 1.0
+      normalize: false
 
 solver:
-  acceleration: none           # none | dsa
-  convergence_tolerance: 1.0e-12
-  max_iterations: 50000
+  acceleration: dsa           # none | dsa
+  convergence_tolerance: 1.0e-4
+  max_iterations: 500
 
 output:
   directory: ./

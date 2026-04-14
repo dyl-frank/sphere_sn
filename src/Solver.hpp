@@ -179,12 +179,13 @@ private:
             r_prev = r_out;
         }
 
+        // Shell areas
         for (int i = 0; i <= msh_I; ++i) {
             double r = msh_r_edge(i);
             msh_A(i) = 4.0 * M_PI * r * r;
         }
 
-        // Cell volumes, centers, and dA (Lec 25, Eq. 19)
+        // Cell volumes, centers, and dA 
         for (int i = 0; i < msh_I; ++i) {
             double r_in  = msh_r_edge(i);
             double r_out = msh_r_edge(i + 1);
@@ -211,7 +212,7 @@ private:
         msh_sigma_s0.SetSize(msh_I);
         // Size (K_max x I); use at least 1 row to avoid zero-size DenseMatrix
         msh_sigma_sk.SetSize(msh_K_max > 0 ? msh_K_max : 1, msh_I);
-        msh_sigma_sk = 0.0;
+        msh_sigma_sk = 0.0; // Initialize to 0
 
         for (int i = 0; i < msh_I; ++i) {
             int s = msh_shell_idx[i];
@@ -229,41 +230,66 @@ private:
     // =======================================================================
     void build_source_arrays()
     {
-        std::map<std::string, int> src_idx;
-        for (int j = 0; j < static_cast<int>(msh_inp.distributed_sources.size()); ++j)
-            src_idx[msh_inp.distributed_sources[j].id] = j;
+        // Map source id directly to its data for convenient lookup
+        std::map<std::string, const DistributedSourceInput*> src_map;
+        for (const auto& src : msh_inp.distributed_sources)
+            src_map[src.id] = &src;
 
         msh_q_dist.SetSize(msh_I);
         msh_q_dist = 0.0;
-        mfem::Array<int> shell_local_ctr(static_cast<int>(msh_inp.shells.size()));
-        shell_local_ctr = 0;
 
+        // Per-shell cell counter; always incremented so it tracks each cell's
+        // local index within its shell (needed to index per_cell_strength)
+        std::vector<int> shell_cell_ctr(msh_inp.shells.size(), 0);
+
+        // Assign source strength to each cell
         for (int i = 0; i < msh_I; ++i) {
             int s = msh_shell_idx[i];
-            const std::string& src_id = msh_inp.shells[s].source;
-            if (src_id == "none" || src_id.empty()) { shell_local_ctr[s]++; continue; }
-            auto it = src_idx.find(src_id);
-            if (it == src_idx.end())
-                throw std::runtime_error("Source id not found: " + src_id);
-            const auto& src = msh_inp.distributed_sources[it->second];
-            int local = shell_local_ctr[s]++;
-            msh_q_dist(i) = !src.per_cell_strength.empty()
-                            ? src.per_cell_strength[local]
-                            : src.strength;
-        }
+            int local = shell_cell_ctr[s]++;  // local index of cell i within shell s
 
-        // Optional normalization: scale so \int q dV = 1 within each shell
-        for (int s = 0; s < static_cast<int>(msh_inp.shells.size()); ++s) {
             const std::string& src_id = msh_inp.shells[s].source;
             if (src_id == "none" || src_id.empty()) continue;
-            auto it = src_idx.find(src_id);
-            if (it == src_idx.end() || !msh_inp.distributed_sources[it->second].normalize) continue;
+
+            auto it = src_map.find(src_id);
+            if (it == src_map.end()) {
+                throw std::runtime_error("Source id not found: " + src_id);
+            }
+
+            const auto& src = *it->second;
+
+            // If the source has no per-cell list, use the single uniform strength
+            // Otherwise, use the strength for this specific cell
+            if (src.per_cell_strength.empty()) {
+                msh_q_dist(i) = src.strength;
+            } else {
+                msh_q_dist(i) = src.per_cell_strength[local];
+            }
+        }
+
+        // Per-shell normalization: scale q so that int(q dV) = 1 within each shell.
+        // The outermost shell is skipped when joint normalization is active; in that
+        // case compute_bc_scale() applies a single combined scale to it and the BC.
+        bool joint = needs_joint_normalization();
+        int  n_shells = static_cast<int>(msh_inp.shells.size());
+        for (int s = 0; s < n_shells; ++s) {
+            bool is_boundary_shell = (s == n_shells - 1);
+            if (is_boundary_shell && joint) continue;
+
+            const std::string& src_id = msh_inp.shells[s].source;
+            if (src_id == "none" || src_id.empty()) continue;
+
+            auto it = src_map.find(src_id);
+            if (it == src_map.end() || !it->second->normalize) continue;
+
             double vol_integral = 0.0;
             for (int i = 0; i < msh_I; ++i)
-                if (msh_shell_idx[i] == s) vol_integral += msh_q_dist(i) * msh_V(i);
+                if (msh_shell_idx[i] == s)
+                    vol_integral += msh_q_dist(i) * msh_V(i);
+
             if (vol_integral > 0.0)
                 for (int i = 0; i < msh_I; ++i)
-                    if (msh_shell_idx[i] == s) msh_q_dist(i) /= vol_integral;
+                    if (msh_shell_idx[i] == s)
+                        msh_q_dist(i) /= vol_integral;
         }
     }
 
@@ -331,6 +357,35 @@ private:
     //  BOUNDARY CONDITION HELPERS
     // =======================================================================
 
+    // Raw (unscaled) angular flux for inward direction index m.
+    // Priority: per_direction > isotropic_flux > scalar_flux (converted as ψ = φ/2).
+    double raw_psi(int m) const
+    {
+        const auto& bc = msh_inp.boundary;
+        if (!bc.per_direction.empty())
+            return m < static_cast<int>(bc.per_direction.size())
+                   ? bc.per_direction[m] : 0.0;
+        if (bc.isotropic_flux != 0.0)
+            return bc.isotropic_flux;
+        return bc.scalar_flux / 2.0;
+    }
+
+    // Returns true when bc.normalize=true AND the outermost shell's source
+    // also has normalize=true.  In that case the two sources are jointly
+    // scaled so that  S_vol + J_in = 1.
+    bool needs_joint_normalization() const
+    {
+        if (!msh_inp.boundary.normalize) return false;
+        if (msh_inp.shells.empty()) return false;
+
+        const std::string& bnd_src_id = msh_inp.shells.back().source;
+        if (bnd_src_id == "none" || bnd_src_id.empty()) return false;
+
+        for (const auto& src : msh_inp.distributed_sources)
+            if (src.id == bnd_src_id && src.normalize) return true;
+        return false;
+    }
+
     // Compute msh_bc_scale so that the incoming half-range current = 1 when
     // bc.normalize = true.  Called once after compute_angular_grid().
     //
@@ -338,38 +393,54 @@ private:
     //
     // For isotropic BC:  J_in = psi_in * sum_{mu_m < 0} (-mu_m) * w_m
     // For per_direction: J_in = sum_{m < N/2}  (-mu_m) * w_m * psi_m
+    //
+    // Joint-normalization mode (both source and BC have normalize=true):
+    //   S_vol = integral(q dV) over all normalize=true source shells  [already
+    //           stored raw in msh_q_dist — per-shell step was skipped]
+    //   scale = 1 / (S_vol + J_in)
+    //   msh_q_dist scaled by `scale` for those shells; msh_bc_scale = scale.
     void compute_bc_scale()
     {
         if (!msh_inp.boundary.normalize) { msh_bc_scale = 1.0; return; }
 
-        const auto& bc = msh_inp.boundary;
         double J_in = 0.0;
         int N_in = msh_N_angle / 2;   // negative-mu directions are m = 0..N/2-1
-        for (int m = 0; m < N_in; ++m) {
-            double psi_raw = bc.per_direction.empty() ? bc.isotropic_flux
-                                                      : (m < static_cast<int>(bc.per_direction.size())
-                                                         ? bc.per_direction[m] : 0.0);
-            J_in += (-msh_mu(m)) * msh_w_angle(m) * std::max(psi_raw, 0.0);
-        }
+        for (int m = 0; m < N_in; ++m)
+            J_in += (-msh_mu(m)) * msh_w_angle(m) * std::max(raw_psi(m), 0.0);
         if (J_in <= 0.0)
             throw std::runtime_error("bc.normalize=true but incoming partial current is zero");
-        msh_bc_scale = 1.0 / J_in;
-        std::cout << "  BC normalize: raw J_in = " << J_in
-                  << "  -> psi scale = " << msh_bc_scale << "\n";
+
+        if (needs_joint_normalization()) {
+            // Sum raw source over the boundary shell (per-shell step was skipped for it)
+            int bnd_shell = static_cast<int>(msh_inp.shells.size()) - 1;
+            double S_vol = 0.0;
+            for (int i = 0; i < msh_I; ++i)
+                if (msh_shell_idx[i] == bnd_shell)
+                    S_vol += msh_q_dist(i) * msh_V(i);
+
+            double total = S_vol + J_in;
+            if (total <= 0.0)
+                throw std::runtime_error("Joint normalization: S_vol + J_in = 0");
+
+            double scale = 1.0 / total;
+            for (int i = 0; i < msh_I; ++i)
+                if (msh_shell_idx[i] == bnd_shell)
+                    msh_q_dist(i) *= scale;
+            msh_bc_scale = scale;
+
+            std::cout << "  Joint normalize: S_vol = " << S_vol
+                      << "  J_in = " << J_in << "  -> scale = " << scale << "\n";
+        } else {
+            msh_bc_scale = 1.0 / J_in;
+            std::cout << "  BC normalize: raw J_in = " << J_in
+                      << "  -> psi scale = " << msh_bc_scale << "\n";
+        }
     }
 
     // Angular flux at the outer boundary for inward direction m (mu_m < 0).
     double bc_value(int m) const
     {
-        const auto& bc = msh_inp.boundary;
-        double val = 0.0;
-        if (!bc.per_direction.empty()) {
-            if (m < static_cast<int>(bc.per_direction.size()))
-                val = bc.per_direction[m];
-        } else {
-            val = bc.isotropic_flux;
-        }
-        return std::max(val, 0.0) * msh_bc_scale;
+        return std::max(raw_psi(m), 0.0) * msh_bc_scale;
     }
 
     // BC at the outer boundary for the starting direction (mu = -1).
@@ -377,13 +448,8 @@ private:
     // per project item 7d (reduces to psi_in for isotropic BC).
     double bc_value_start() const
     {
-        const auto& bc = msh_inp.boundary;
-        double psi1 = bc.per_direction.empty() ? bc.isotropic_flux
-                      : (static_cast<int>(bc.per_direction.size()) > 0 ? bc.per_direction[0] : 0.0);
-        double psi2 = bc.per_direction.empty() ? bc.isotropic_flux
-                      : (static_cast<int>(bc.per_direction.size()) > 1 ? bc.per_direction[1] : psi1);
-        psi1 = std::max(psi1, 0.0) * msh_bc_scale;
-        psi2 = std::max(psi2, 0.0) * msh_bc_scale;
+        double psi1 = std::max(raw_psi(0), 0.0) * msh_bc_scale;
+        double psi2 = std::max(raw_psi(1), 0.0) * msh_bc_scale;
 
         if (msh_N_angle == 2) return psi1;   // S2: constant extrapolation
 
@@ -594,6 +660,11 @@ private:
             D(i) = 1.0 / (3.0 * (msh_sigma_t(i) - sigma_s1));
         }
 
+        // <mu> = sum_{mu_m > 0} mu_m * w_m  (PDF item 12, Marshak condition)
+        double mu_avg = 0.0;
+        for (int m = msh_N_angle / 2; m < msh_N_angle; ++m)
+            mu_avg += msh_mu(m) * msh_w_angle(m);
+
         mfem::Vector a(msh_I), b(msh_I), c(msh_I), d(msh_I);
         a = 0.0;  b = 0.0;  c = 0.0;  d = 0.0;
 
@@ -610,12 +681,12 @@ private:
                 c(0) = -fac_r;
 
             } else if (i == msh_I - 1) {
-                // Vacuum BC at r=R: half-cell Marshak approximation
+                // Vacuum BC at r=R: Marshak condition J = <mu> * phi  (PDF item 11, p.8)
+                // fac_r = A_{I+1/2} * <mu>  consistent with quadrature set
                 double h_c_l    = msh_r_ctr(i) - msh_r_ctr(i - 1);
                 double D_face_l = 2.0 * D(i) * D(i-1) / (D(i) + D(i-1));
                 double fac_l    = msh_A(i) * D_face_l / h_c_l;
-                double h_last   = msh_r_edge(msh_I) - msh_r_edge(msh_I - 1);
-                double fac_r    = msh_A(msh_I) * 2.0 * D(i) / h_last;
+                double fac_r    = msh_A(msh_I) * mu_avg;
                 b(i) = msh_sigma_a(i) * msh_V(i) + fac_l + fac_r;
                 a(i) = -fac_l;
                 c(i) = 0.0;
@@ -637,6 +708,15 @@ private:
         mfem::Vector dphi = thomas(a, b, c, d);
         for (int i = 0; i < msh_I; ++i)
             msh_phi_l(0, i) += dphi(i);
+
+        // Update outgoing angular fluxes at right boundary (PDF item 14, p.9):
+        //   psi_m^{l+1} = psi_m^{l+1/2} + (d_phi + 3*d_J*mu_m) / 2   for mu_m > 0
+        // where d_phi = dphi at boundary (≈ last cell center) and d_J = <mu> * d_phi
+        // (Marshak condition).  This ensures global conservation at round-off.
+        double dphi_bnd = dphi(msh_I - 1);
+        double dJ_bnd   = mu_avg * dphi_bnd;
+        for (int m = msh_N_angle / 2; m < msh_N_angle; ++m)
+            msh_psi_bnd(m) += (dphi_bnd + 3.0 * dJ_bnd * msh_mu(m)) / 2.0;
     }
 
     // =======================================================================
