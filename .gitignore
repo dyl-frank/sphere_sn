@@ -15,9 +15,9 @@ sn_transport
 *.so
 
 # Output files
-*.csv
-*.txt
+*.pdf
 !README.md
+
 
 # Editor/IDE
 .vscode/

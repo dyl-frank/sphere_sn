@@ -144,6 +144,9 @@ private:
     //  boundary normalization scale (1.0 unless bc.normalize = true)
     double msh_bc_scale = 1.0;
 
+    struct BalanceRow { int iter; double src, abs_r, inc, leak, rel_err; };
+    std::vector<BalanceRow> msh_balance_history;
+
     // =======================================================================
     //  TASK 1 — BUILD SPATIAL MESH
     // =======================================================================
@@ -720,6 +723,41 @@ private:
     }
 
     // =======================================================================
+    //  BALANCE TABLE (stdout)
+    // =======================================================================
+    void print_balance_table(int iter)
+    {
+        double source_rate = 0.0, abs_rate = 0.0;
+        for (int i = 0; i < msh_I; ++i) {
+            source_rate += msh_q_dist(i) * msh_V(i);
+            abs_rate    += msh_sigma_a(i) * msh_phi_l(0, i) * msh_V(i);
+        }
+
+        double incident = 0.0;
+        for (int m = 0; m < msh_N_angle / 2; ++m)
+            incident += (-msh_mu(m)) * msh_w_angle(m) * bc_value(m);
+        incident *= msh_A(msh_I);
+
+        double leakage = 0.0;
+        for (int m = msh_N_angle / 2; m < msh_N_angle; ++m)
+            leakage += msh_mu(m) * msh_w_angle(m) * msh_psi_bnd(m);
+        leakage *= msh_A(msh_I);
+
+        double balance_error = (source_rate + incident) - (abs_rate + leakage);
+        double rel_err       = balance_error / std::max(source_rate + incident, 1e-30);
+
+        msh_balance_history.push_back({iter, source_rate, abs_rate, incident, leakage, rel_err});
+
+        std::cout << "  [DSA balance, iter " << std::setw(4) << iter << "]"
+                  << std::scientific << std::setprecision(4)
+                  << "  src=" << source_rate
+                  << "  abs=" << abs_rate
+                  << "  inc=" << incident
+                  << "  leak=" << leakage
+                  << "  bal_err=" << rel_err << "\n";
+    }
+
+    // =======================================================================
     //  TASK 4 — SOURCE ITERATION LOOP
     // =======================================================================
     void source_iteration()
@@ -753,8 +791,10 @@ private:
             update_phi_moments();
             auto td = Clock::now();
 
-            if (use_dsa)
+            if (use_dsa) {
                 apply_dsa(phi_old);
+                print_balance_table(iter + 1);
+            }
             auto te = Clock::now();
 
             t_source += Ms(tb - ta).count();
@@ -871,6 +911,18 @@ private:
 
         std::ofstream f(dir + "/" + msh_inp.name + "balance_table.txt");
         f << std::scientific << std::setprecision(6);
+        if (!msh_balance_history.empty()) {
+            f << "# DSA balance per iteration\n"
+              << "# iter  source_rate       abs_rate          incident          leakage           relative_error\n";
+            for (const auto& row : msh_balance_history)
+                f << std::setw(6) << row.iter
+                  << "  " << row.src
+                  << "  " << row.abs_r
+                  << "  " << row.inc
+                  << "  " << row.leak
+                  << "  " << row.rel_err << "\n";
+            f << "\n# Final converged balance\n";
+        }
         f << "source_rate    = " << source_rate  << "\n"
           << "abs_rate       = " << abs_rate      << "\n"
           << "incident       = " << incident      << "\n"
