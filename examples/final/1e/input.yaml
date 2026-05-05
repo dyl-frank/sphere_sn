@@ -1,0 +1,36 @@
+name: "1e_"
+geometry:
+  shells:
+    - id: 1
+      outer_radius: 10.0       # [cm]
+      num_cells: 10
+      material: m1
+      source: none
+
+angular_quadrature:
+  sn_order: 16           
+
+materials:
+  - id: m1
+    sigma_t: 5.0             # [1/cm]
+    sigma_a: 0.001
+    scattering_order: 0 
+
+sources:
+  boundary:
+    # Only the most-negative direction (mu_1) carries flux; normalized to unit partial current
+    per_direction: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    normalize: true
+
+solver:
+  acceleration: dsa          # DSA unstable for sigma_t*h=5; use unaccelerated SI
+  convergence_tolerance: 1.0e-4
+  max_iterations: 5000
+
+output:
+  directory: ./
+  scalar_flux_csv: true           # cell-centered \phi_i across all shells
+  scalar_flux_pdv: true           # cell-centered \phi_i across all shells
+  balance_table: true         # source rate, inflow, outflow, absorption, balance measure
+  angular_flux_boundary: true # all \psi_m at outer boundary
+  starting_direction_origin: true  # \psi_{1/2} at r = 0

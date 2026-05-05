@@ -1,0 +1,35 @@
+name: "2d_"
+geometry:
+  shells:
+    - id: 1
+      outer_radius: 1.0
+      num_cells: 50
+      material: m1
+      source: none
+
+angular_quadrature:
+  sn_order: 16
+
+materials:
+  - id: m1
+    sigma_t: 3.05            # [1/cm]  sigma_t = sigma_a + sigma_s = 1.05 + 2.0
+    sigma_a: 1.05            # [1/cm]  delta_sigma_a = +0.05
+    scattering_order: 0
+
+sources:
+  boundary:
+    isotropic_flux: 1.0
+    normalize: true
+
+solver:
+  acceleration: dsa
+  convergence_tolerance: 1.0e-4
+  max_iterations: 50000
+
+output:
+  directory: ./
+  scalar_flux_csv: true
+  scalar_flux_pdv: true
+  balance_table: true
+  angular_flux_boundary: true
+  starting_direction_origin: true

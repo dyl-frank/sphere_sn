@@ -1,6 +1,6 @@
-source_rate    = 0.000000e+00
-abs_rate       = 8.435847e+00
-incident       = 1.256637e+01
-leakage        = 4.130524e+00
-balance_error  = -7.105427e-15
-relative_error = -5.654319e-16
+source_rate    = 0.000000000000e+00
+abs_rate       = 8.435846973075e+00
+incident       = 1.256637061436e+01
+leakage        = 4.130523641285e+00
+balance_error  = -7.105427357601e-15
+relative_error = -5.654319433713e-16

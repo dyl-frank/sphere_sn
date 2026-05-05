@@ -1,21 +1,5 @@
 // ===========================================================================
-//  Solver.hpp — 1D Spherical-Geometry Sn Transport Solver
-//
-//  Primary reference: AllNotes.pdf, Lecture 25
-//    "Discretization and Solution of the Spherical-Geometry Sn Equations"
-//
-//  Project assignment sections addressed (project_2026.pdf):
-//    Task 1 – Build the spatial mesh from shell definitions
-//    Task 2 – Compute the angular quadrature grid (\alpha-coefficients, \beta weights)
-//    Task 3 – Transport sweep with diamond-difference (DD) / weighted-diamond
-//              (WD) and starting-direction treatment
-//    Task 4 – Source iteration loop (convergence in L_\inf scalar-flux norm)
-//    Task 5 – DSA acceleration (optional; activated by solver.acceleration=dsa)
-//    Task 6 – Output: scalar flux, balance table, boundary angular flux,
-//              starting-direction flux at origin
-//
-//  Equation numbers below refer to Lecture 25 unless noted otherwise.
-//  Linear algebra uses mfem::Vector and mfem::DenseMatrix (no FEM required).
+//  Solver.hpp - 1D Spherical-Geometry Sn Transport Solver
 // ===========================================================================
 #pragma once
 
@@ -110,7 +94,7 @@ private:
     mfem::Vector     msh_r_ctr;       // cell centers,   size I
     mfem::Vector     msh_A;           // size I+1
     mfem::Vector     msh_V;           // size I
-    mfem::Vector     msh_dA;          // A[i+1]−A[i],    size I
+    mfem::Vector     msh_dA;          // A[i+1]-A[i],    size I
     mfem::Array<int> msh_shell_idx;   // which shell each cell belongs to, size I
 
     //  quadrature 
@@ -133,8 +117,9 @@ private:
     mfem::Vector msh_q_dist;    // isotropic volumetric q_0 [p/cm^3/s], size I
 
     //  solution arrays 
-    mfem::DenseMatrix msh_psi_cell;          // \psi_{i,m},  size (I x N)
-    mfem::DenseMatrix msh_phi_l;             // \phi_k(i),   size (K_max+1 x I)
+    mfem::DenseMatrix msh_psi_cell;          // \psi_{i,m},       size (I x N)
+    mfem::DenseMatrix msh_psi_ang_in;        // \psi_{i,m-1/2},   size (I x N)
+    mfem::DenseMatrix msh_phi_l;             // \phi_k(i),        size (K_max+1 x I)
     mfem::Vector      msh_psi_start_cell;    // \psi_s cell averages, size I
     double            msh_psi_start_origin = 0.0;  // \psi_s at r = 0
 
@@ -148,7 +133,7 @@ private:
     std::vector<BalanceRow> msh_balance_history;
 
     // =======================================================================
-    //  TASK 1 — BUILD SPATIAL MESH
+    //  TASK 1 - BUILD SPATIAL MESH
     // =======================================================================
     void build_mesh()
     {
@@ -297,7 +282,7 @@ private:
     }
 
     // =======================================================================
-    //  TASK 2 — ANGULAR QUADRATURE GRID
+    //  TASK 2 - ANGULAR QUADRATURE GRID
     // =======================================================================
     void compute_angular_grid()
     {
@@ -320,14 +305,14 @@ private:
             msh_mu_half(m + 1) = msh_mu_half(m) + msh_w_angle(m);
 
         // Alpha-coefficients (Lec 25, Eqs. 8-9):
-        //   \alpha_{-1/2} = 0,  \alpha_{m+1/2} = \alpha_{m-1/2} − 2 \mu_m w_m
+        //   \alpha_{-1/2} = 0,  \alpha_{m+1/2} = \alpha_{m-1/2} - 2 \mu_m w_m
         msh_alpha.SetSize(N + 1);
         msh_alpha(0) = 0.0;
         for (int m = 0; m < N; ++m)
             msh_alpha(m + 1) = msh_alpha(m) - 2.0 * msh_mu(m) * msh_w_angle(m);
 
         // Beta weights for weighted-diamond in angle (Lec 25, Eq. 12):
-        //   \beta_m = (\mu_m − \mu_{m-1/2}) / (\mu_{m+1/2} − \mu_{m-1/2})
+        //   \beta_m = (\mu_m - \mu_{m-1/2}) / (\mu_{m+1/2} - \mu_{m-1/2})
         msh_beta.SetSize(N);
         for (int m = 0; m < N; ++m) {
             double dmu  = msh_mu_half(m + 1) - msh_mu_half(m);
@@ -361,7 +346,7 @@ private:
     // =======================================================================
 
     // Raw (unscaled) angular flux for inward direction index m.
-    // Priority: per_direction > isotropic_flux > scalar_flux (converted as ψ = φ/2).
+    // Priority: per_direction > isotropic_flux > scalar_flux (converted as psi = \phi/2).
     double raw_psi(int m) const
     {
         const auto& bc = msh_inp.boundary;
@@ -399,7 +384,7 @@ private:
     //
     // Joint-normalization mode (both source and BC have normalize=true):
     //   S_vol = integral(q dV) over all normalize=true source shells  [already
-    //           stored raw in msh_q_dist — per-shell step was skipped]
+    //           stored raw in msh_q_dist - per-shell step was skipped]
     //   scale = 1 / (S_vol + J_in)
     //   msh_q_dist scaled by `scale` for those shells; msh_bc_scale = scale.
     void compute_bc_scale()
@@ -409,7 +394,7 @@ private:
         double J_in = 0.0;
         int N_in = msh_N_angle / 2;   // negative-mu directions are m = 0..N/2-1
         for (int m = 0; m < N_in; ++m)
-            J_in += (-msh_mu(m)) * msh_w_angle(m) * std::max(raw_psi(m), 0.0);
+            J_in += (-msh_mu(m)) * msh_w_angle(m) * raw_psi(m);
         if (J_in <= 0.0)
             throw std::runtime_error("bc.normalize=true but incoming partial current is zero");
 
@@ -443,7 +428,7 @@ private:
     // Angular flux at the outer boundary for inward direction m (mu_m < 0).
     double bc_value(int m) const
     {
-        return std::max(raw_psi(m), 0.0) * msh_bc_scale;
+        return raw_psi(m) * msh_bc_scale;
     }
 
     // BC at the outer boundary for the starting direction (mu = -1).
@@ -464,29 +449,32 @@ private:
     }
 
     // =======================================================================
-    //  STARTING-DIRECTION SWEEP  (slab geometry at \mu = −1)
+    //  STARTING-DIRECTION SWEEP  (slab geometry at \mu = -1)
     // =======================================================================
     void starting_direction_sweep(const mfem::DenseMatrix& Q)
     {
         msh_psi_start_cell.SetSize(msh_I);
         msh_psi_start_cell = 0.0;
 
-        // Source interpolated to \mu=-1 from m=0 and m=1 (Lec. 25, Eq. 15)
+        // Starting-direction source at mu_{1/2} = -1 via the polynomial expansion
+        // (project item 5): Q(mu_{1/2}) = sum_k (2k+1)/2 * (sigma_sk*phi_k + q_k) * P_k(-1)
         mfem::Vector Qs(msh_I);
-        double mu0 = msh_mu(0), mu1 = msh_mu(1);
-        double dmu = mu1 - mu0;
-        for (int i = 0; i < msh_I; ++i)
-            Qs(i) = Q(0, i) * (mu1 + 1.0) / dmu - Q(1, i) * (mu0 + 1.0) / dmu;
+        for (int i = 0; i < msh_I; ++i) {
+            double q = 0.5 * msh_q_dist(i) + 0.5 * msh_sigma_s0(i) * msh_phi_l(0, i);
+            for (int k = 1; k <= msh_K_max; ++k)
+                q += (2.0*k + 1) / 2.0 * msh_sigma_sk(k-1, i)
+                     * msh_phi_l(k, i) * Pn(k, -1.0);
+            Qs(i) = q;
+        }
 
         // Diamond-difference slab sweep inward at \mu=-1 (Lec. 25, Eq. 14):
-        //   (\psi_out−\psi_in)/h + \Sigma_t*(\psi_in+\psi_out)/2 = Q_s
-        //    \psi_out = (Q_s*h + (1−coeff)*\psi_in) / (1+coeff),  coeff = \Sigma_t*h/2
+        //   (\psi_out-\psi_in)/h + \Sigma_t*(\psi_in+\psi_out)/2 = Q_s
+        //    \psi_out = (Q_s*h + (1-coeff)*\psi_in) / (1+coeff),  coeff = \Sigma_t*h/2
         double psi_in = bc_value_start();
         for (int i = msh_I - 1; i >= 0; --i) {
             double h       = msh_r_edge(i + 1) - msh_r_edge(i);
             double coeff   = 0.5 * msh_sigma_t(i) * h;
             double psi_out = (Qs(i) * h + (1.0 - coeff) * psi_in) / (1.0 + coeff);
-            psi_out = std::max(psi_out, 0.0);
             msh_psi_start_cell(i) = 0.5 * (psi_in + psi_out);
             psi_in = psi_out;
         }
@@ -494,8 +482,7 @@ private:
     }
 
     // =======================================================================
-    //  TASK 3 — TRANSPORT SWEEP  (all angular and spatial cells)
-    //
+    //  TRANSPORT SWEEP  (all angular and spatial cells)
     //  Reference: Lec 25, Sec 3 "Spatial Discretization" + Sec 4 "Source Iteration"
     //
     //  Angular redistribution coefficients (common to both sweep directions):
@@ -525,11 +512,13 @@ private:
 
         msh_psi_cell.SetSize(msh_I, msh_N_angle);
         msh_psi_cell = 0.0;
+        msh_psi_ang_in.SetSize(msh_I, msh_N_angle);
+        msh_psi_ang_in = 0.0;
         msh_psi_bnd.SetSize(msh_N_angle);
         msh_psi_bnd = 0.0;
 
-        // psi_ang_in[i]: angular inflow for current direction m
-        // Initialized to starting-direction cell averages (\psî_{i,-1/2})
+        // psi_ang_in[i]: angular inflow \psi_{i,m-1/2} for current direction m
+        // Initialized to starting-direction cell averages at m=0
         mfem::Vector psi_ang_in(msh_I);
         for (int i = 0; i < msh_I; ++i)
             psi_ang_in(i) = msh_psi_start_cell(i);
@@ -543,6 +532,10 @@ private:
             double wd_beta     = msh_beta(m);         // WD angular interpolation weight
             double alpha_right = msh_alpha(m + 1);    // alpha_{m+1/2}
             double alpha_left  = msh_alpha(m);        // alpha_{m-1/2}
+
+            // Store psi_{i,m-1/2} before the direction-m solve (project item 8)
+            for (int i = 0; i < msh_I; ++i)
+                msh_psi_ang_in(i, m) = psi_ang_in(i);
 
             psi_sp = 0.0;
 
@@ -567,14 +560,14 @@ private:
                     double rhs = Q(m, i) * cell_volume
                                  - dir_cosine * (msh_A(i+1) + face_area_inner) * psi_sp_inflow
                                  + ang_redist_source * psi_ang_inflow;
-                    double psi_cell_avg = std::max(rhs / lhs_coeff, 0.0);
+                    double psi_cell_avg = rhs / lhs_coeff;
 
                     msh_psi_cell(i, m) = psi_cell_avg;
-                    psi_sp(i) = std::max(2.0 * psi_cell_avg - psi_sp_inflow, 0.0);  // DD closure
+                    psi_sp(i) = 2.0 * psi_cell_avg - psi_sp_inflow;  // DD closure
 
                     if (m < msh_N_angle - 1)
-                        psi_ang_out(i) = std::max(
-                            (psi_cell_avg - (1.0 - wd_beta) * psi_ang_inflow) / wd_beta, 0.0);
+                        psi_ang_out(i) =
+                            (psi_cell_avg - (1.0 - wd_beta) * psi_ang_inflow) / wd_beta;
                 }
                 msh_psi_bnd(m) = bc_value(m);
 
@@ -599,14 +592,14 @@ private:
                     double rhs = Q(m, i) * cell_volume
                                  + dir_cosine * (face_area_outer + msh_A(i)) * psi_sp_inflow
                                  + ang_redist_source * psi_ang_inflow;
-                    double psi_cell_avg = std::max(rhs / lhs_coeff, 0.0);
+                    double psi_cell_avg = rhs / lhs_coeff;
 
                     msh_psi_cell(i, m) = psi_cell_avg;
-                    psi_sp(i + 1) = std::max(2.0 * psi_cell_avg - psi_sp_inflow, 0.0);  // DD closure
+                    psi_sp(i + 1) = 2.0 * psi_cell_avg - psi_sp_inflow;  // DD closure
 
                     if (m < msh_N_angle - 1)
-                        psi_ang_out(i) = std::max(
-                            (psi_cell_avg - (1.0 - wd_beta) * psi_ang_inflow) / wd_beta, 0.0);
+                        psi_ang_out(i) =
+                            (psi_cell_avg - (1.0 - wd_beta) * psi_ang_inflow) / wd_beta;
                 }
                 msh_psi_bnd(m) = psi_sp(msh_I);
             }
@@ -637,7 +630,7 @@ private:
     }
 
     // =======================================================================
-    //  TASK 5 — DSA CORRECTION
+    //  TASK 5 - DSA CORRECTION
     //
     //  Lec 19, Sec 2, Eq. 23 (isotropic) / Eq. 38 (anisotropic, phi-only).
     //
@@ -654,69 +647,78 @@ private:
     // =======================================================================
     void apply_dsa(const mfem::Vector& phi_old)
     {
+        // Transport-corrected D and scattering error for each cell
         mfem::Vector eps(msh_I), D(msh_I);
         for (int i = 0; i < msh_I; ++i) {
             eps(i) = msh_phi_l(0, i) - phi_old(i);
-            // Transport-corrected D (Lec 19 Eq. 38c): D = 1/(3(Sigma_t - Sigma_{s,1}))
-            // msh_sigma_sk row 0 stores Sigma_{s,1}; zero when purely isotropic.
             double sigma_s1 = (msh_K_max >= 1) ? msh_sigma_sk(0, i) : 0.0;
             D(i) = 1.0 / (3.0 * (msh_sigma_t(i) - sigma_s1));
         }
 
-        // <mu> = sum_{mu_m > 0} mu_m * w_m  (PDF item 12, Marshak condition)
+        // <mu> = sum_{mu_m > 0} mu_m * w_m  (PDF item 12)
         double mu_avg = 0.0;
         for (int m = msh_N_angle / 2; m < msh_N_angle; ++m)
             mu_avg += msh_mu(m) * msh_w_angle(m);
 
-        mfem::Vector a(msh_I), b(msh_I), c(msh_I), d(msh_I);
-        a = 0.0;  b = 0.0;  c = 0.0;  d = 0.0;
-
+        // Per-cell diffusion factor: fac(i) = A_avg(i) * D(i) / h(i)
+        // A_avg = arithmetic mean of left and right face areas (PDF item 11)
+        mfem::Vector fac(msh_I);
         for (int i = 0; i < msh_I; ++i) {
-            d(i) = msh_sigma_s0(i) * eps(i) * msh_V(i);
-
-            if (i == 0) {
-                // Reflecting BC at origin: no left face
-                double h_c_r    = msh_r_ctr(1) - msh_r_ctr(0);
-                double D_face_r = 2.0 * D(0) * D(1) / (D(0) + D(1));
-                double fac_r    = msh_A(1) * D_face_r / h_c_r;
-                b(0) = msh_sigma_a(0) * msh_V(0) + fac_r;
-                a(0) = 0.0;
-                c(0) = -fac_r;
-
-            } else if (i == msh_I - 1) {
-                // Vacuum BC at r=R: Marshak condition J = <mu> * phi  (PDF item 11, p.8)
-                // fac_r = A_{I+1/2} * <mu>  consistent with quadrature set
-                double h_c_l    = msh_r_ctr(i) - msh_r_ctr(i - 1);
-                double D_face_l = 2.0 * D(i) * D(i-1) / (D(i) + D(i-1));
-                double fac_l    = msh_A(i) * D_face_l / h_c_l;
-                double fac_r    = msh_A(msh_I) * mu_avg;
-                b(i) = msh_sigma_a(i) * msh_V(i) + fac_l + fac_r;
-                a(i) = -fac_l;
-                c(i) = 0.0;
-
-            } else {
-                // Interior cell: harmonic-mean face diffusion coefficients
-                double h_c_r    = msh_r_ctr(i + 1) - msh_r_ctr(i);
-                double h_c_l    = msh_r_ctr(i) - msh_r_ctr(i - 1);
-                double D_face_r = 2.0 * D(i) * D(i+1) / (D(i) + D(i+1));
-                double D_face_l = 2.0 * D(i) * D(i-1) / (D(i) + D(i-1));
-                double fac_r    = msh_A(i + 1) * D_face_r / h_c_r;
-                double fac_l    = msh_A(i)     * D_face_l / h_c_l;
-                b(i) = msh_sigma_a(i) * msh_V(i) + fac_l + fac_r;
-                a(i) = -fac_l;
-                c(i) = -fac_r;
-            }
+            double A_avg = 0.5 * (msh_A(i) + msh_A(i + 1));
+            double h     = msh_r_edge(i + 1) - msh_r_edge(i);
+            fac(i) = A_avg * D(i) / h;
         }
 
-        mfem::Vector dphi = thomas(a, b, c, d);
-        for (int i = 0; i < msh_I; ++i)
-            msh_phi_l(0, i) += dphi(i);
+        // Face-centered tridiagonal system (size I+1):
+        //   unknowns x[j] = delta_phi at face j  (j = 0 ... I)
+        // Derived from PDF item 11: half-cell balances at the origin (row 0) and
+        // outer boundary (row I); cell-pair balances at interior faces (rows 1..I-1).
+        int N = msh_I + 1;
+        mfem::Vector a(N), b(N), c(N), d(N);
+        a = 0.0;  b = 0.0;  c = 0.0;  d = 0.0;
 
-        // Update outgoing angular fluxes at right boundary (PDF item 14, p.9):
-        //   psi_m^{l+1} = psi_m^{l+1/2} + (d_phi + 3*d_J*mu_m) / 2   for mu_m > 0
-        // where d_phi = dphi at boundary (≈ last cell center) and d_J = <mu> * d_phi
-        // (Marshak condition).  This ensures global conservation at round-off.
-        double dphi_bnd = dphi(msh_I - 1);
+        // Row 0: first half-cell balance (origin to cell-0 centre)
+        //   A_avg(0)*J(0) + sigma_a(0)*V(0)/4*(x[0]+x[1]) = sigma_s0(0)*eps(0)*V(0)/2
+        //   J(0) = -(D(0)/h(0))*(x[1]-x[0])
+        //   A_avg(0) = A(1)/2 since A(0)=0 at origin -> fac(0) already encodes this
+        b(0) =  fac(0) + msh_sigma_a(0) * msh_V(0) / 4.0;
+        c(0) = -fac(0) + msh_sigma_a(0) * msh_V(0) / 4.0;
+        d(0) = msh_sigma_s0(0) * eps(0) * msh_V(0) / 2.0;
+
+        // Rows 1..I-1: cell-pair balance for cells (k-1, k), equation for face k
+        //   A_avg(k)*J(k) - A_avg(k-1)*J(k-1) + sigma_a terms = source terms
+        for (int k = 1; k < msh_I; ++k) {
+            int i = k - 1, j = k;
+            a(k) = -fac(i) + msh_sigma_a(i) * msh_V(i) / 4.0;
+            b(k) =  fac(i) + fac(j) + msh_sigma_a(i) * msh_V(i) / 4.0
+                                     + msh_sigma_a(j) * msh_V(j) / 4.0;
+            c(k) = -fac(j) + msh_sigma_a(j) * msh_V(j) / 4.0;
+            d(k) = msh_sigma_s0(i) * eps(i) * msh_V(i) / 2.0
+                 + msh_sigma_s0(j) * eps(j) * msh_V(j) / 2.0;
+        }
+
+        // Row I: last half-cell balance (cell-(I-1) centre to outer boundary)
+        //   A(I)*<mu>*x[I] - A_avg(I-1)*J(I-1) + sigma_a(I-1)*V(I-1)/4*(x[I]+x[I-1])
+        //     = sigma_s0(I-1)*eps(I-1)*V(I-1)/2
+        //   Marshak vacuum BC: J_{I+1/2} = <mu> * x[I]  (PDF item 12)
+        {
+            int i = msh_I - 1;
+            a(msh_I) = -fac(i) + msh_sigma_a(i) * msh_V(i) / 4.0;
+            b(msh_I) =  msh_A(msh_I) * mu_avg + fac(i) + msh_sigma_a(i) * msh_V(i) / 4.0;
+            d(msh_I) = msh_sigma_s0(i) * eps(i) * msh_V(i) / 2.0;
+        }
+
+        // Solve for face-centred corrections delta_phi[j]
+        mfem::Vector dphi_face = thomas(a, b, c, d);
+
+        // Apply diamond-average correction to cell-centred scalar flux (PDF item 11)
+        for (int i = 0; i < msh_I; ++i)
+            msh_phi_l(0, i) += 0.5 * (dphi_face(i) + dphi_face(i + 1));
+
+        // Update outgoing angular fluxes at right boundary (PDF item 14):
+        //   psi_m^{l+1} = psi_m^{l+1/2} + (delta_phi + 3*delta_J*mu_m) / 2  for mu_m > 0
+        // delta_phi is the exact face value x[I]; delta_J = <mu>*delta_phi (Marshak BC)
+        double dphi_bnd = dphi_face(msh_I);
         double dJ_bnd   = mu_avg * dphi_bnd;
         for (int m = msh_N_angle / 2; m < msh_N_angle; ++m)
             msh_psi_bnd(m) += (dphi_bnd + 3.0 * dJ_bnd * msh_mu(m)) / 2.0;
@@ -748,8 +750,8 @@ private:
 
         msh_balance_history.push_back({iter, source_rate, abs_rate, incident, leakage, rel_err});
 
-        std::cout << "  [DSA balance, iter " << std::setw(4) << iter << "]"
-                  << std::scientific << std::setprecision(4)
+        std::cout << "  [DSA balance, iter " << std::setw(8) << iter << "]"
+                  << std::scientific << std::setprecision(8)
                   << "  src=" << source_rate
                   << "  abs=" << abs_rate
                   << "  inc=" << incident
@@ -758,7 +760,7 @@ private:
     }
 
     // =======================================================================
-    //  TASK 4 — SOURCE ITERATION LOOP
+    //  TASK 4 - SOURCE ITERATION LOOP
     // =======================================================================
     void source_iteration()
     {
@@ -773,16 +775,15 @@ private:
         using Clock = std::chrono::steady_clock;
         using Ms    = std::chrono::duration<double, std::milli>;
 
-        double rel_err = 1.0 + tol;
-        int    iter    = 0;
+        double rel_err      = 1.0 + tol;  // estimated error \epsilon = max \delta\phi / (1 - \rho)
+        double sum_diff_old = 0.0;         // \sum|\phi^l - \phi^{l-1}|, used for spectral-radius estimate
+        int    iter         = 0;
         double t_source = 0, t_sweep = 0, t_phi = 0, t_dsa = 0;
 
-        while (iter < maxIt && rel_err > tol) {
-            // Save current scalar flux for convergence check
-            mfem::Vector phi_old(msh_I);
-            for (int i = 0; i < msh_I; ++i)
-                phi_old(i) = msh_phi_l(0, i);
+        mfem::Vector phi_prev(msh_I);   // \phi^l: scalar flux at start of current iteration
+        phi_prev = 0.0;
 
+        while (iter < maxIt && rel_err > tol) {
             auto ta = Clock::now();
             mfem::DenseMatrix Q = compute_total_source();
             auto tb = Clock::now();
@@ -792,7 +793,7 @@ private:
             auto td = Clock::now();
 
             if (use_dsa) {
-                apply_dsa(phi_old);
+                apply_dsa(phi_prev);
                 print_balance_table(iter + 1);
             }
             auto te = Clock::now();
@@ -802,27 +803,41 @@ private:
             t_phi    += Ms(td - tc).count();
             t_dsa    += Ms(te - td).count();
 
-            // L_\inf relative convergence check
-            rel_err = 0.0;
+            // Spectral-radius convergence test (project spec, item k):
+            //   \rho^{l+1} = \sum|\phi^{l+1}-\phi^l| / \sum|\phi^l-\phi^{l-1}|
+            //   \epsilon^{l+1}  = max_i \delta\phi_i / (1 - \rho^{l+1})  where \delta\phi_i = |\phi^{l+1}-\phi^l|/\phi^{l+1}
+            //   stop when \epsilon < tau
+            double sum_diff_new = 0.0;
+            double max_delta    = 0.0;
             for (int i = 0; i < msh_I; ++i) {
-                double num = std::abs(msh_phi_l(0, i) - phi_old(i));
-                double den = std::max(msh_phi_l(0, i), 1e-14);
-                rel_err = std::max(rel_err, num / den);
+                double diff = std::abs(msh_phi_l(0, i) - phi_prev(i));
+                sum_diff_new += diff;
+                max_delta = std::max(max_delta,
+                                     diff / std::max(std::abs(msh_phi_l(0, i)), 1e-14));
             }
+            double rho_tilde = (sum_diff_old > 0.0)
+                ? std::min(sum_diff_new / sum_diff_old, 1.0 - 1e-14)
+                : 0.0;
+            rel_err = max_delta / (1.0 - rho_tilde);
+
+            sum_diff_old = sum_diff_new;
+            for (int i = 0; i < msh_I; ++i) phi_prev(i) = msh_phi_l(0, i);
 
             ++iter;
             if (iter % 10 == 0)
                 std::cout << "  iter " << std::setw(4) << iter
-                          << "  rel_err = " << std::scientific
-                          << std::setprecision(4) << rel_err << "\n";
+                          << "  max_delta = " << std::scientific << std::setprecision(4)
+                          << max_delta
+                          << "  rho = " << rho_tilde
+                          << "  err_est = " << rel_err << "\n";
         }
 
         if (rel_err <= tol)
             std::cout << "Converged in " << iter
-                      << " iterations (rel_err=" << rel_err << ")\n";
+                      << " iterations (err_est=" << rel_err << ")\n";
         else
             std::cout << "NOT converged after " << iter
-                      << " iterations (rel_err=" << rel_err << ")\n";
+                      << " iterations (err_est=" << rel_err << ")\n";
 
         std::cout << "  -- iteration timing (total across " << iter << " iters) --\n"
                   << std::fixed << std::setprecision(3)
@@ -834,7 +849,7 @@ private:
     }
 
     // =======================================================================
-    //  TASK 6 — OUTPUT
+    //  TASK 6 - OUTPUT
     // =======================================================================
     void write_output()
     {
@@ -843,10 +858,13 @@ private:
         std::string d = dir.string();
 
         if (msh_inp.output.scalar_flux_csv)               write_scalar_flux_csv(d);
+        if (msh_inp.output.vertex_scalar_flux_csv)        write_vertex_scalar_flux_csv(d);
         if (msh_inp.output.scalar_flux_pdv)               write_scalar_flux_pdv(d);
         if (msh_inp.output.balance_table)             write_balance_table(d);
         if (msh_inp.output.angular_flux_boundary)     write_angular_flux_boundary(d);
         if (msh_inp.output.starting_direction_origin) write_starting_direction(d);
+        if (msh_inp.output.angular_inflow)            write_angular_inflow(d);
+        if (msh_inp.output.angular_flux_cell)         write_angular_flux_cell(d);
     }
 
     //  scalar_flux.csv 
@@ -865,6 +883,55 @@ private:
         }
     }
 
+    // vertex_scalar_flux.csv
+    // Columns: vertex, r_edge_cm, phi_0 [, phi_1, ..., phi_K]
+    // Values are linearly interpolated from cell centers to edges.
+    void write_vertex_scalar_flux_csv(const std::string& dir)
+    {
+        // Build edge-interpolated flux for each moment k
+        // Interior edges: weighted by distance between adjacent cell centers
+        // Boundary edges: linear extrapolation from the two nearest cell centers
+        int J = msh_I + 1;
+        mfem::DenseMatrix phi_edge(msh_K_max + 1, J);
+
+        for (int k = 0; k <= msh_K_max; ++k) {
+            // Left boundary (r=0): extrapolate from cells 0 and 1
+            if (msh_I >= 2) {
+                double dr = msh_r_ctr(1) - msh_r_ctr(0);
+                double slope = (msh_phi_l(k, 1) - msh_phi_l(k, 0)) / dr;
+                phi_edge(k, 0) = msh_phi_l(k, 0) - slope * (msh_r_ctr(0) - msh_r_edge(0));
+            } else {
+                phi_edge(k, 0) = msh_phi_l(k, 0);
+            }
+            // Interior edges: linear interpolation between adjacent cell centers
+            for (int j = 1; j < msh_I; ++j) {
+                double dr = msh_r_ctr(j) - msh_r_ctr(j - 1);
+                double t  = (msh_r_edge(j) - msh_r_ctr(j - 1)) / dr;
+                phi_edge(k, j) = (1.0 - t) * msh_phi_l(k, j - 1) + t * msh_phi_l(k, j);
+            }
+            // Right boundary (r=R): extrapolate from cells I-1 and I-2
+            if (msh_I >= 2) {
+                double dr = msh_r_ctr(msh_I - 1) - msh_r_ctr(msh_I - 2);
+                double slope = (msh_phi_l(k, msh_I - 1) - msh_phi_l(k, msh_I - 2)) / dr;
+                phi_edge(k, msh_I) = msh_phi_l(k, msh_I - 1)
+                                   + slope * (msh_r_edge(msh_I) - msh_r_ctr(msh_I - 1));
+            } else {
+                phi_edge(k, msh_I) = msh_phi_l(k, msh_I - 1);
+            }
+        }
+
+        std::ofstream f(dir + "/" + msh_inp.name + "vertex_scalar_flux.csv");
+        f << std::scientific << std::setprecision(8);
+        f << "vertex,r_edge_cm,phi_0";
+        for (int k = 1; k <= msh_K_max; ++k) f << ",phi_" << k;
+        f << "\n";
+        for (int j = 0; j < J; ++j) {
+            f << j << "," << msh_r_edge(j);
+            for (int k = 0; k <= msh_K_max; ++k) f << "," << phi_edge(k, j);
+            f << "\n";
+        }
+    }
+
     void write_scalar_flux_pdv(const std::string& dir)
     {
         std::ofstream f(dir + "/" + msh_inp.name + "scalar_flux.ult");
@@ -873,9 +940,36 @@ private:
         {
             f << "# phi-" << k << " vs. cell center" << "\n";
             for (int i = 0; i < msh_I; ++i)
-            {
-                f << msh_r_ctr(i) << " "  << msh_phi_l(k, i);
-                f << "\n";
+                f << msh_r_ctr(i) << " " << msh_phi_l(k, i) << "\n";
+            f << "\n\n";
+
+            // Vertex (edge) values: same interpolation as write_vertex_scalar_flux_csv
+            f << "# phi-" << k << " vs. vertex" << "\n";
+            // Left boundary: linear extrapolation from cells 0 and 1
+            if (msh_I >= 2) {
+                double dr    = msh_r_ctr(1) - msh_r_ctr(0);
+                double slope = (msh_phi_l(k, 1) - msh_phi_l(k, 0)) / dr;
+                f << msh_r_edge(0) << " "
+                  << msh_phi_l(k, 0) - slope * (msh_r_ctr(0) - msh_r_edge(0)) << "\n";
+            } else {
+                f << msh_r_edge(0) << " " << msh_phi_l(k, 0) << "\n";
+            }
+            // Interior edges: linear interpolation between adjacent cell centers
+            for (int j = 1; j < msh_I; ++j) {
+                double dr = msh_r_ctr(j) - msh_r_ctr(j - 1);
+                double t  = (msh_r_edge(j) - msh_r_ctr(j - 1)) / dr;
+                f << msh_r_edge(j) << " "
+                  << (1.0 - t) * msh_phi_l(k, j - 1) + t * msh_phi_l(k, j) << "\n";
+            }
+            // Right boundary: linear extrapolation from cells I-2 and I-1
+            if (msh_I >= 2) {
+                double dr    = msh_r_ctr(msh_I - 1) - msh_r_ctr(msh_I - 2);
+                double slope = (msh_phi_l(k, msh_I - 1) - msh_phi_l(k, msh_I - 2)) / dr;
+                f << msh_r_edge(msh_I) << " "
+                  << msh_phi_l(k, msh_I - 1)
+                     + slope * (msh_r_edge(msh_I) - msh_r_ctr(msh_I - 1)) << "\n";
+            } else {
+                f << msh_r_edge(msh_I) << " " << msh_phi_l(k, msh_I - 1) << "\n";
             }
             f << "\n\n";
         }
@@ -884,7 +978,7 @@ private:
     //  balance_table.txt 
     // source_rate = \Sigma_i q[i]*V[i]
     // abs_rate    = \Sigma_i \Sigma_a[i]*\phi_0[i]*V[i]
-    // incident    = A[I] * \Sigma_{m<N/2} (−\mu_m)*w_m*bc_value(m)
+    // incident    = A[I] * \Sigma_{m<N/2} (-\mu_m)*w_m*bc_value(m)
     // leakage     = A[I] * \Sigma_m \mu_m*w_m*\psi_bnd[m]
     void write_balance_table(const std::string& dir)
     {
@@ -910,17 +1004,22 @@ private:
         double rel_err       = balance_error / std::max(source_rate + incident, 1e-30);
 
         std::ofstream f(dir + "/" + msh_inp.name + "balance_table.txt");
-        f << std::scientific << std::setprecision(6);
+        f << std::scientific << std::setprecision(12);
         if (!msh_balance_history.empty()) {
             f << "# DSA balance per iteration\n"
-              << "# iter  source_rate       abs_rate          incident          leakage           relative_error\n";
+              << "# " << std::setw(4) << "iter"
+              << "  " << std::setw(19) << "source_rate"
+              << "  " << std::setw(19) << "abs_rate"
+              << "  " << std::setw(19) << "incident"
+              << "  " << std::setw(19) << "leakage"
+              << "  " << std::setw(19) << "relative_error" << "\n";
             for (const auto& row : msh_balance_history)
-                f << std::setw(6) << row.iter
-                  << "  " << row.src
-                  << "  " << row.abs_r
-                  << "  " << row.inc
-                  << "  " << row.leak
-                  << "  " << row.rel_err << "\n";
+                f << "  " << std::setw(4) << row.iter
+                  << "  " << std::setw(19) << row.src
+                  << "  " << std::setw(19) << row.abs_r
+                  << "  " << std::setw(19) << row.inc
+                  << "  " << std::setw(19) << row.leak
+                  << "  " << std::setw(19) << row.rel_err << "\n";
             f << "\n# Final converged balance\n";
         }
         f << "source_rate    = " << source_rate  << "\n"
@@ -944,7 +1043,37 @@ private:
               << "," << msh_psi_bnd(m) << "\n";
     }
 
-    //  starting_direction.csv 
+    //  angular_inflow.csv
+    // \psi_{i,m-1/2}: angular inflow stored before each direction-m solve.
+    // Columns: cell, r_center_cm, direction, mu_m, psi_ang_in
+    void write_angular_inflow(const std::string& dir)
+    {
+        std::ofstream f(dir + "/" + msh_inp.name + "angular_inflow.csv");
+        f << std::scientific << std::setprecision(8);
+        f << "cell,r_center_cm,direction,mu_m,psi_ang_in\n";
+        for (int m = 0; m < msh_N_angle; ++m)
+            for (int i = 0; i < msh_I; ++i)
+                f << i << "," << msh_r_ctr(i) << ","
+                  << m << "," << msh_mu(m) << ","
+                  << msh_psi_ang_in(i, m) << "\n";
+    }
+
+    //  angular_flux_cell.csv
+    // Cell-averaged angular fluxes psi_{i,m} = msh_psi_cell(i,m).
+    // Columns: cell, r_center_cm, direction, mu_m, w_m, psi_cell
+    void write_angular_flux_cell(const std::string& dir)
+    {
+        std::ofstream f(dir + "/" + msh_inp.name + "angular_flux_cell.csv");
+        f << std::scientific << std::setprecision(8);
+        f << "cell,r_center_cm,direction,mu_m,w_m,psi_cell\n";
+        for (int m = 0; m < msh_N_angle; ++m)
+            for (int i = 0; i < msh_I; ++i)
+                f << i << "," << msh_r_ctr(i) << ","
+                  << m << "," << msh_mu(m) << "," << msh_w_angle(m) << ","
+                  << msh_psi_cell(i, m) << "\n";
+    }
+
+    //  starting_direction.csv
     // Row 0: r=0, psi_start_origin;  Rows 1..I: r_center[i], psi_start_cell[i]
     void write_starting_direction(const std::string& dir)
     {

@@ -67,7 +67,7 @@ materials:
     sigma_t:         # total cross section [1/cm]       (required)
     sigma_a:         # absorption cross section [1/cm]  (required)
     scattering_order: 0          # Pn scattering order K; 0 = isotropic (default: 0)
-    sigma_s_moments: [s1, s2, …] # scattering moments σ_sk for k=1..K
+    sigma_s_moments: [s1, s2, …] # scattering moments sigma_s,k for k=1..K
                                  # (required when scattering_order > 0)
 
 sources:
@@ -77,31 +77,31 @@ sources:
     - id:            # source identifier                (required)
       strength:      # uniform source strength [p/cm³/s]
       per_cell_strength: [q1, q2, …]  # per-cell values; overrides 'strength'
-      normalize: false  # if true, scale so ∫q dV = 1   (default: false)
+      normalize: false  # if true, scale so int q dV = 1   (default: false)
 
   # --- Outer-boundary incident flux ---
   # Exactly one of scalar_flux / isotropic_flux / per_direction should be set.
   boundary:
-    scalar_flux:      # isotropic scalar flux φ₀ [p/cm²/s]; solver sets ψ = φ₀/2
+    scalar_flux:      # isotropic scalar flux phi_0 [p/cm^2/s]; solver sets $\psi$ = phi_0 / 2
                       # (default: 0.0)
-    isotropic_flux:   # isotropic angular flux ψ applied to all incoming directions
-                      # (default: 0.0; use scalar_flux instead when φ is known)
-    per_direction: [ψ₁, ψ₂, …]  # explicit ψ_m for each μ_m < 0, length = N/2
-    normalize: false  # if true, scale so incoming half-range current J⁺ = 1
+    isotropic_flux:   # isotropic angular flux psi applied to all incoming directions
+                      # (default: 0.0; use scalar_flux instead when phi is known)
+    per_direction: [\psi_1, psi_2, ...]  # explicit psi_m for each mu_m < 0, length = N/2
+    normalize: false  # if true, scale so incoming half-range current J^+ = 1
                       # (default: false)
 
 solver:
   acceleration: none        # "none" or "dsa"                 (default: none)
-  convergence_tolerance: 1.0e-4  # L∞ relative change in φ   (default: 1e-4)
+  convergence_tolerance: 1.0e-4  # L-inf relative change in phi   (default: 1e-4)
   max_iterations: 500       # iteration cap                   (default: 500)
 
 output:
   directory: ./results/          # output directory            (default: ./results/)
-  scalar_flux_csv: true          # write φᵢ to CSV             (default: true)
-  scalar_flux_pdv: true          # write φᵢ to pydv .ult file  (default: true)
+  scalar_flux_csv: true          # write phi_i to CSV             (default: true)
+  scalar_flux_pdv: true          # write phi_i to pydv .ult file  (default: true)
   balance_table: true            # write global balance table  (default: true)
-  angular_flux_boundary: true    # write ψ_m at outer boundary (default: true)
-  starting_direction_origin: true # write ψ₁/₂ at r = 0       (default: true)
+  angular_flux_boundary: true    # write psi_m at outer boundary (default: true)
+  starting_direction_origin: true # write psi_1/2 at r = 0       (default: true)
 ```
 
 ### Boundary condition field priority
@@ -109,10 +109,10 @@ output:
 When `normalize: false` the incoming angular flux for direction $m$ is resolved in this order:
 
 1. `per_direction[m]` — if the list is provided
-2. `isotropic_flux` — if non-zero (sets ψ = value for every incoming direction)
+2. `isotropic_flux` — if non-zero (sets $\psi$ = value for every incoming direction)
 3. `scalar_flux / 2` — converts an isotropic scalar flux to an angular flux
 
-When `normalize: true` the raw ψ values above are scaled so that the incoming half-range current equals 1:
+When `normalize: true` the raw $\psi$ values above are scaled so that the incoming half-range current equals 1:
 
 $$J^+ = \sum_{\mu_m < 0} (-\mu_m)\, w_m\, \psi_m = 1$$
 

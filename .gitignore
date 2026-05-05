@@ -16,6 +16,9 @@ sn_transport
 
 # Output files
 *.pdf
+*.png
+*.gz
+*.tex
 !README.md
 
 

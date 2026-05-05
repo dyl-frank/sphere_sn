@@ -1,5 +1,5 @@
 // ===========================================================================
-//  InputData.hpp — Plain data structures for the 1D Spherical Sn input deck
+//  InputData.hpp - Plain data structures for the 1D Spherical Sn input deck
 // ===========================================================================
 #pragma once
 
@@ -35,16 +35,16 @@ struct MaterialInput
 struct DistributedSourceInput
 {
     std::string          id;
-    double               strength = 0.0;     // uniform q0 [p/cm³/s]
+    double               strength = 0.0;     // uniform q0 [p/cm^3/s]
     std::vector<double>  per_cell_strength;  // per-cell override; takes precedence if non-empty
     bool                 normalize = false;
 };
 
 struct BoundaryInput
 {
-    double               isotropic_flux   = 0.0;  // angular flux ψ, applied isotropically
-    double               scalar_flux      = 0.0;  // isotropic scalar flux φ; solver sets ψ = φ/2
-    std::vector<double>  per_direction;            // explicit ψ_m for µm < 0, length = N/2
+    double               isotropic_flux   = 0.0;  // angular flux psi, applied isotropically
+    double               scalar_flux      = 0.0;  // isotropic scalar flux phi; solver sets psi = phi/2
+    std::vector<double>  per_direction;            // explicit psi_m for mum < 0, length = N/2
     bool                 normalize = false;
 };
 
@@ -64,8 +64,8 @@ struct SolverInput
 struct AngularQuadrature
 {
     int                 order = 4;
-    std::vector<double> mu;   // direction cosines μ_m, sorted ascending ∈ [-1,1]
-    std::vector<double> w;    // quadrature weights, Σ w_m = 2
+    std::vector<double> mu;   // direction cosines mu_m, sorted ascending in [-1,1]
+    std::vector<double> w;    // quadrature weights, sum w_m = 2
 };
 
 // ---------------------------------------------------------------------------
@@ -75,10 +75,13 @@ struct OutputInput
 {
     std::string directory                  = "./results/";
     bool        scalar_flux_csv            = true;
+    bool        vertex_scalar_flux_csv     = true;
     bool        scalar_flux_pdv            = true;
     bool        balance_table              = true;
     bool        angular_flux_boundary      = true;
     bool        starting_direction_origin  = true;
+    bool        angular_inflow             = true;
+    bool        angular_flux_cell          = false;  // cell-averaged psi_{i,m}
 };
 
 // ---------------------------------------------------------------------------

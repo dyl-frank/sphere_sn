@@ -1,5 +1,6 @@
 // ===========================================================================
-//  InputParser.hpp — Axom Inlet-based YAML input parser
+//  InputParser.hpp - Axom Inlet-based YAML input parser. Copied from LLNL
+//  TRT project "HotStuff"
 // ===========================================================================
 #pragma once
 
@@ -14,19 +15,6 @@
 #include "Functions.hpp"
 #include "InputData.hpp"
 
-// ===========================================================================
-//  FromInlet specializations  (must live in the global namespace)
-//
-//  NOTE on Axom Inlet collection retrieval
-//  
-//  Container::get<T>() for collection types (array/dict/vector) takes *no*
-//  name argument.  To read a named sub-collection use the Proxy path:
-//
-//    base["field"].get<std::vector<double>>()
-//
-//  Container::isUserProvided(name) correctly returns false when the user
-//  omitted an optional array, even if the field was declared in the schema.
-// ===========================================================================
 
 // ---------------------------------------------------------------------------
 //  ShellInput
@@ -101,7 +89,7 @@ public:
     explicit InputParser(const std::string& filepath) : m_filepath(filepath) {}
 
     // -----------------------------------------------------------------------
-    //  parse() — open file, define schema, verify, extract → InputData
+    //  parse() - open file, define schema, verify, extract -> InputData
     // -----------------------------------------------------------------------
     InputData parse()
     {
@@ -179,10 +167,10 @@ private:
         auto& bnd = sources.addStruct("boundary",
                         "Outer-boundary incident angular flux");
         bnd.addDouble("isotropic_flux",
-                      "Isotropic incident angular flux ψ (applied to all incoming directions)")
+                      "Isotropic incident angular flux psi (applied to all incoming directions)")
                      .defaultValue(0.0);
         bnd.addDouble("scalar_flux",
-                      "Isotropic incident scalar flux φ; solver converts to ψ = φ/2")
+                      "Isotropic incident scalar flux phi; solver converts to psi = phi/2")
                      .defaultValue(0.0);
         bnd.addDoubleArray("per_direction",
                            "Per-direction psi_m for mu_m < 0 (length = N/2)");
@@ -206,6 +194,8 @@ private:
                          "Results directory").defaultValue("./results/");
         output.addBool("scalar_flux_csv",
                        "Write cell-centered scalar flux into csv").defaultValue(true);
+        output.addBool("vertex_scalar_flux_csv",
+                       "Write vertex (edge) scalar flux into csv").defaultValue(true);
         output.addBool("scalar_flux_pdv",
                        "Write cell-centered scalar flux into file for pdv").defaultValue(true);
         output.addBool("balance_table",
@@ -214,10 +204,14 @@ private:
                        "Write angular flux at outer boundary").defaultValue(true);
         output.addBool("starting_direction_origin",
                        "Write psi_{1/2} at r=0").defaultValue(true);
+        output.addBool("angular_inflow",
+                       "Write cell angular inflow fluxes psi_{i,m-1/2}").defaultValue(true);
+        output.addBool("angular_flux_cell",
+                       "Write cell-averaged angular fluxes psi_{i,m}").defaultValue(false);
     }
 
     // -----------------------------------------------------------------------
-    //  extract — pull parsed values out of Inlet into InputData
+    //  extract - pull parsed values out of Inlet into InputData
     // -----------------------------------------------------------------------
     static InputData extract(axom::inlet::Inlet& inlet)
     {
@@ -280,6 +274,8 @@ private:
             inlet.get<std::string>("output/directory");
         data.output.scalar_flux_csv =
             inlet.get<bool>("output/scalar_flux_csv");
+        data.output.vertex_scalar_flux_csv =
+            inlet.get<bool>("output/vertex_scalar_flux_csv");
         data.output.scalar_flux_pdv =
             inlet.get<bool>("output/scalar_flux_pdv");
         data.output.balance_table =
@@ -288,6 +284,10 @@ private:
             inlet.get<bool>("output/angular_flux_boundary");
         data.output.starting_direction_origin =
             inlet.get<bool>("output/starting_direction_origin");
+        data.output.angular_inflow =
+            inlet.get<bool>("output/angular_inflow");
+        data.output.angular_flux_cell =
+            inlet.get<bool>("output/angular_flux_cell");
 
         return data;
     }

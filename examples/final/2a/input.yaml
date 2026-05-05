@@ -1,0 +1,37 @@
+name: "2a_"
+geometry:
+  shells:
+    - id: 1
+      outer_radius: 1.0       # [cm]
+      num_cells: 50
+      material: m1
+      source: none
+
+angular_quadrature:
+  sn_order: 16           
+
+materials:
+  - id: m1
+    sigma_t: 3.0             # [1/cm]
+    sigma_a: 1.0
+    scattering_order: 0 
+
+sources:
+  boundary:
+    # Incident flux at the outer surface of the outermost shell
+    isotropic_flux: 1.0
+    normalize: true     
+
+solver:
+  acceleration: dsa           # none | dsa
+  convergence_tolerance: 1.0e-10
+  max_iterations: 50000
+
+output:
+  directory: ./
+  scalar_flux_csv: true           # cell-centered \phi_i across all shells
+  scalar_flux_pdv: true           # cell-centered \phi_i across all shells
+  balance_table: true         # source rate, inflow, outflow, absorption, balance measure
+  angular_flux_boundary: true # all \psi_m at outer boundary
+  starting_direction_origin: true  # \psi_{1/2} at r = 0
+  angular_flux_cell: true     # cell-averaged psi_{i,m} for perturbation theory
